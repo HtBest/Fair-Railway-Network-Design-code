@@ -34,7 +34,7 @@ def auto_test():
     for m in maps:
         print("Running test on map: ", m)
         input_file = 'map_instances/'+m+'.city'
-        print("Test on filter:")
+        print("Test on different algorithms:")
         arr = [5, 6, 7, 8, 9, 10, 11, 12, 13]
         compare_algorithm(arr, 1,  [
             'local_search', 'exact'], filename=input_file)
