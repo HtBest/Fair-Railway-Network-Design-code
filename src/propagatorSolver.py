@@ -1,15 +1,10 @@
-from utils import add_edges_iterative, delete_edges_iterative, get_budgets, local_search
 from solver import Solver
 import network_design as nd
-import graph as g
 import functools
 import sys
 import time
-import timeit
 from collections import defaultdict
 import copy
-import math
-import numpy as np
 import clingo
 asp = """% check graph is valid
 :- distance(A,A,_).
@@ -187,25 +182,13 @@ class PickingOrderBUGGY(clingo.Propagator):
             self.assigned[abs(c)] = True
         while self.progress < len(self.literalOrder) and self.assigned[self.literalOrder[self.progress]]:
             self.progress += 1
-        # while self.progress < len(self.literalOrder):
-        #     assert self.literalOrder[self.progress] in self.assigned
-        #     if not self.assigned[self.literalOrder[self.progress]]:
-        #         break
-        #     self.progress += 1
-        # print(f"prop {changes}, {self.assigned}, {self.progress}, {self.literalOrder}")
         print(f"prop {changes}, {self.progress}")
 
     def undo(self, solver_id, assign, changes):
         for c in changes:
             self.assigned[abs(c)] = False
-        # while self.progress > 0:
-        #     assert self.literalOrder[self.progress] in self.assigned
-        #     if not self.assigned[self.literalOrder[self.progress]]:
-        #         break
-        #     self.progress -= 1
         while self.progress > 0 and self.assigned[self.literalOrder[self.progress-1]]:
             self.progress -= 1
-        # print(f"undo {changes}, {self.assigned}, {self.progress}, {self.literalOrder}")
         print(f"undo {changes}, {self.progress}")
 
     def decide(self, solver_id, assignment, fallback):
@@ -258,11 +241,7 @@ class PickingOrderSlow(clingo.Propagator):
 def getEdgeOrder(instance: nd.Instance, orderLinks):
     s = Solver(instance)
     edges = s.delete_edges_iterative(len(instance.edges), [instance.egal_bias])
-    # nbEdges = len(H.to_dict()["edges"])
-    # _, edges = delete_edges_iterative(H, nbEdges, [1]) if orderLinks else add_edges_iterative(H, nbEdges, [1])
-    # edges = list(reversed(edges))
     edges = list(edges)
-    # vertices = list(H.to_dict()["vertices"])
     vertices = list(instance.vertices)
     dedges = [(vertices[i], vertices[j]) for (i, j) in edges]
     dedges = [(min(i, j), max(i, j)) for (i, j) in dedges]
@@ -285,13 +264,10 @@ def timeBoundSolve(ctl, prop, timeLimit=-1, verbose=False):
                 break
             totalCalls += prop.calls
             iterations += 1
-            # print(totalCalls,time.process_time()-startTime,prop.value,m)
             if hnd.model() is None:
                 timeout = False
                 break
             model = copy.copy(prop.apsp.pick)
-    # print(f"timeout {timeout}, exhaust {model}, bestVal {prop.value if model is not None else None}")
-    # assert False
     if verbose:
         print(prop.calls, totalCalls, iterations, file=sys.stderr)
     return (timeout, model)
@@ -301,153 +277,22 @@ def solve(instance: nd.Instance, budget=3500, p=1, orderLinks=True, noWasteConst
     orderOption = ["--heuristic=Domain"] if orderLinks is not None else []
     ctl = clingo.Control(["0"] + orderOption)
     p = instance.egal_bias
-    # instance = nd.Instance(instance.graph, budget=budget, egal_bias=p)
     ctl.add(asp)
     if noWasteConstraint:
         ctl.add(asp_no_waste)
     ctl.add(instance.toASP())
     if orderLinks is not None:
         ordered_edges = getEdgeOrder(instance, orderLinks)
-        # print(getEdgeOrder(G,True))
-        # print(getEdgeOrder(G,False))
-        # assert False
         heuristics = [
             f"#heuristic pick({e[0]},{e[1]}). [{len(ordered_edges)-i},true]" for i, e in enumerate(ordered_edges)]
         order_heuristic = "\n".join(heuristics)
-        # prop2 = PickingOrderSlow(ordered_edges)
-        # ctl.register_propagator(prop2)
         ctl.add(order_heuristic)
     prop = SocialCost(instance.graph, p)
     ctl.register_propagator(prop)
     (timeout, model) = timeBoundSolve(ctl, prop, timeLimit, verbose)
-    print("EX", instance.budget)
     if not model or timeout:
         return None
     else:
         vertices = prop.apsp.vertices
         distance = prop.apsp.distance
-        # return model
         return (model, {p: computeSocialCost(floydWarshall(vertices, model, distance), instance.trips, p)})
-        # return (model, { p : computeSocialCost(floydWarshall(vertices,model,distance),instance.trips,p) for p in [-1,1,2,3,6]})
-
-
-# 301 -> solvingTime5
-# 30  -> solvingTime3
-def measureTime():
-    maxTime = 60
-    budgetSampling = 20  # 6 # 301
-    maps = ["france"]
-    maps = ["us", "france"]
-    sizes = list(range(7, 12))  # [7,8]
-    # sizes = list(range(10,11)) #[7,8]
-    ps = [4]  # [1,4]
-    samples = defaultdict(int)
-    times = defaultdict(float)
-    timedout = defaultdict(bool)
-    for n in sizes:
-        for country in maps:
-            G = g.Graph()
-            G.load("map_instances/" + country + ".city", n)
-            getEdgeOrder(G, True)
-            getEdgeOrder(G, False)
-            budgets = get_budgets(G, budgetSampling)  # [0:2]
-            for p in ps:
-                for b in budgets:
-                    for order in [True, False]:
-                        #                    for order in [True,False,None]:
-                        for noWaste in [True, False]:
-                            allParams = (n, country, p, b, order, noWaste)
-                            params = (n, country, p, order, noWaste)
-                            if not timedout[params]:
-                                (nb, time) = timeit.Timer(lambda: solve(
-                                    G, budget=b, p=p, orderLinks=order, noWasteConstraint=noWaste, timeLimit=maxTime)).autorange()
-                                print(
-                                    f"callback {time: <2f}/{nb: <3}  {allParams} {params}", file=sys.stderr)
-                                samples[params] += nb
-                                times[params] += time
-                                timedout[params] |= time > maxTime
-                            else:
-                                print(f"skip {allParams}", file=sys.stderr)
-    means = {params: (times[params]/nb) for params, nb in samples.items()}
-    organized = defaultdict(dict)
-    for params, value in means.items():
-        n = params[0]
-        organized[n][params[1:]] = value if not timedout[params] else "nan"
-    cols = organized[sizes[0]]
-    print("n", end=" ")
-    for col in cols:
-        print(".".join(map(str, col)), end=" ")
-    print()
-    for n in sizes:
-        print(n, end=" ")
-        for col in cols:
-            print(organized[n][col], end=" ")
-        print()
-    # print(organized)
-
-
-def checkLocalSearch():
-    budgetSampling = 300
-    maps = ["france", "uk", "canada", "russia",
-            "spain", "us", "germany", "brazil"]
-    # maps = ["us",]
-    # sizes = list(range(7,13))#[7,8,9,10,11,12]
-    sizes = list(range(10, 11))
-    ps = [1]  # ,4,10]
-    betters = defaultdict(int)
-    differs = defaultdict(int)
-    ratios = defaultdict(int)
-    samples = defaultdict(int)
-    for country in maps:
-        for n in sizes:
-            G = g.Graph()
-            G.load("map_instances/" + country + ".city", n)
-            budgets = get_budgets(G, budgetSampling)  # [0:2]
-            # print(len(budgets),file=sys.stderr)
-            # assert False
-            for p in ps:
-                for b in budgets:
-                    # answer = solve(G,budget=b,p=p)
-                    answer = solve(G, budget=b, p=p, orderLinks=True,
-                                   noWasteConstraint=True, timeLimit=-1)
-                    assert answer is not None
-                    # do not save result to files
-                    model, norms = local_search(G, budget=b, p=p)
-                    # allParams = (country,n,p,b)
-                    # params = (country,n,p)
-                    params = (n, p)
-                    samples[params] += 1
-                    if answer:
-                        pmodel, pnorms = answer
-                        differs[params] += norms[p] - pnorms[p]
-                        if pnorms[p] == norms[p]:
-                            print("Match", b, end=" ", file=sys.stderr)
-                        elif pnorms[p] < norms[p]:
-                            betters[params] += 1
-                            ratios[params] += (norms[p] -
-                                               pnorms[p]) / pnorms[p]
-                            print("Better:", b,
-                                  pnorms[p], norms[p], end=" ", file=sys.stderr)
-                        else:
-                            print("Error:", b, pnorms[p],
-                                  norms[p], file=sys.stderr)
-                            assert False
-                print(samples, betters, ratios, differs, file=sys.stderr)
-        print(samples, betters, ratios, differs, file=sys.stderr)
-    organized = defaultdict(dict)
-    for params, value in samples.items():
-        n = params[0]
-        organized[n][params[1:]] = (
-            samples[params], betters[params], ratios[params]/samples[params])
-    cols = organized[sizes[0]]
-    print("n", end=" ")
-    for col in cols:
-        for t in ["samples", "betters", "ratios"]:
-            print(".".join([t]+list(map(str, col))), end=" ")
-    print()
-    for n in sizes:
-        print(n, end=" ")
-        for col in cols:
-            for data in organized[n][col]:
-                print(data, end=" ")
-        print()

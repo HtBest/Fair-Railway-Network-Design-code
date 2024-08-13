@@ -98,13 +98,9 @@ def generate_csv(path):
     instance = data[0][0].instance
     for i, k in enumerate(keys):
         csv = []
-        tmp={}
-        for l in range(len(instance.vertices)):
-            tmp[instance.vertices[l]]=[funcs[i](data[0][0], instance.vertices[l])]
         for j, p in enumerate(P):
             res = []
             for l in range(len(instance.vertices)):
-                # res.append()
                 sumcost = 0
                 sumtrips = 0
                 for m in range(len(data)):
@@ -123,18 +119,9 @@ def generate_csv(path):
                                 data[m][j].path[trip]
                 res.append((funcs[i](data[0][0], instance.vertices[l]),
                            sumcost/sumtrips))  # x and y
-                tmp[instance.vertices[l]].append(sumcost/sumtrips)
             res.sort(key=lambda x: x[0])
             csv.append(res)
-        tmp2=[]
-        for ky,v in tmp.items():
-            ls=[ky]+[vv for vv in v]
-            tmp2.append(ls)
-        tmp2.sort(key=lambda x:x[1])
-        print(k,":")
-        for ky in tmp2:
-            print(ky[0],"&","&".join([str(round(v)) for v in ky[1:]]),r"\\")
-        
+
         with open(path+'/'+k+'.csv', 'w') as f:
             f.write(k+'\tAverage Cost,')
             f.write(','.join(['p='+pname(p) for p in P]))
