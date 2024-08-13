@@ -106,7 +106,7 @@ def compare_algorithm(ns, p, algos, filename):
 
     wrapper = Wrapper()
     data = wrapper.eval(instance_groups)
-    graphfilename = filename.split('/')[-1].split('.')[0]+'_filter'
+    graphfilename = filename.split('/')[-1].split('.')[0]+'_compare'
     if not os.path.exists('results/'+current_time+graphfilename):
         os.makedirs('results/'+current_time+graphfilename)
     # plot and csv
