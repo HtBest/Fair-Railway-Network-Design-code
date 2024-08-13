@@ -1,4 +1,4 @@
-# Fair-Railway-Network-Design-code
+# Fair Railway Network Design
 ## Usage
 To run the code, you need to have Python 3.11 installed on your machine.
 Use the following command to install the required packages:
